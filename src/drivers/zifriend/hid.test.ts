@@ -331,6 +331,50 @@ test("E-sports (performance mode) is written explicitly and reported from the la
   assert.equal(fake.eSports, 1);
 });
 
+/** Runs with a stubbed localStorage (plain node has none); `storage` overrides it, e.g. to throw. */
+async function withStorage(storage: unknown, run: () => Promise<void>) {
+  (globalThis as { localStorage?: unknown }).localStorage = storage;
+  try {
+    await run();
+  } finally {
+    delete (globalThis as { localStorage?: unknown }).localStorage;
+  }
+}
+
+function memoryStorage(store = new Map<string, string>()) {
+  return {
+    store,
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => void store.set(key, value),
+  };
+}
+
+test("E-sports is remembered across clients in this browser", async () => {
+  const storage = memoryStorage();
+  await withStorage(storage, async () => {
+    await connect().client.setPerformanceMode(true);
+    assert.equal(storage.store.get("openmouse-zifriend-v1:m6:esports"), "1");
+    assert.equal((await connect().client.readStatus()).performanceMode, true);
+    await connect().client.setPerformanceMode(false);
+    assert.equal(storage.store.get("openmouse-zifriend-v1:m6:esports"), "0");
+    assert.equal((await connect().client.readStatus()).performanceMode, false);
+  });
+});
+
+test("missing or broken storage falls back to off and never blocks the write", async () => {
+  const broken = {
+    getItem: () => { throw new Error("blocked"); },
+    setItem: () => { throw new Error("blocked"); },
+  };
+  await withStorage(broken, async () => {
+    const { fake, client } = connect();
+    assert.equal((await client.readStatus()).performanceMode, false);
+    assert.equal(await client.setPerformanceMode(true), true);
+    assert.equal(fake.eSports, 1);
+    assert.equal((await client.readStatus()).performanceMode, true);
+  });
+});
+
 test("debounce round-trips and is bounded to 0-20 ms", async () => {
   const { fake, client } = connect();
   assert.equal(await client.setDebounceTime(4), 4);

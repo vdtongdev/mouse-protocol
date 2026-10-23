@@ -127,8 +127,10 @@ write except its own, and never flips it as a side effect.
 E-sports is write-only. Toggling it in the vendor app changed nothing in `07`
 (byte 15 stayed `0x15`), and the vendor app never reads it back either. Bit
 `0x20` of byte 15 is therefore not E-sports; what it is remains unknown. The
-driver reports the performance mode as off until it is written in the
-session, then shows the last value written. Off is the default because the
+driver shows the last value set in OpenMouse in this browser (kept in
+`localStorage`, key `openmouse-zifriend-v1:m6:esports`, shared by the cable and
+the receiver); changes made in the vendor app are not seen. With nothing stored
+it reports off. Off is the default because the
 tested unit shipped with it off, and it keeps the switch visible in OpenMouse
 (which hides the card for an unknown value). Writes are absolute (byte 7 = 1 on,
 2 off), so a wrong display never flips the setting the wrong way. A write cannot

@@ -68,6 +68,25 @@ export class ZifriendHidClient {
   /** Last E-sports value written this session. The mouse cannot be asked, and neither can the vendor app. */
   private eSportsWritten: boolean | null = null;
 
+  /** E-sports is write-only on the wire, so the last value set here is kept in localStorage (cable and receiver share it). */
+  private static readonly ESPORTS_KEY = "openmouse-zifriend-v1:m6:esports";
+
+  private loadESports(): boolean {
+    try {
+      return localStorage.getItem(ZifriendHidClient.ESPORTS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  }
+
+  private saveESports(enabled: boolean): void {
+    try {
+      localStorage.setItem(ZifriendHidClient.ESPORTS_KEY, enabled ? "1" : "0");
+    } catch {
+      // Storage is optional; the write already reached the mouse.
+    }
+  }
+
   constructor(device: HIDDevice) {
     this.device = device;
   }
@@ -157,7 +176,7 @@ export class ZifriendHidClient {
       angleSnapping: settings.angleSnapping,
       rippleControl: settings.rippleControl,
       // E-sports is not readable and the tested unit shipped with it off; writes are absolute, so showing off is safe.
-      performanceMode: this.eSportsWritten ?? false,
+      performanceMode: this.eSportsWritten ?? this.loadESports(),
       scrollDirection: settings.scrollReversed ? "Reverse" : "Forward",
       debounceMs: settings.debounceMs,
       firmware: [zifriendFirmwareLabel(identity.firmware)],
@@ -263,6 +282,7 @@ export class ZifriendHidClient {
     const settings = await this.readSettings(identity);
     await this.write(zifriendEncodeSensor({ ...sensorOf(settings), eSports: enabled }));
     this.eSportsWritten = enabled;
+    this.saveESports(enabled);
     return enabled;
   }
 
