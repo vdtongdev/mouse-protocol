@@ -258,6 +258,7 @@ change was made in the OpenMouse UI and read back from `07`, with no UI errors:
 - Independent read (wake, 300 ms, `07`): `07 01 21 21 21 90 01 20 03 a4 06 80 0c c0 12 55 00 04 00 00`.
 - Performance mode was on in OpenMouse while byte 15 read `0x55` (bits `0x20` and
   `0x80` clear), so neither bit is E-sports.
+- Second pass: lift-off low to high, ripple on to off, angle snapping off to on, Motion Sync on to off. Independent read: `07 01 11 11 11 90 01 20 03 40 06 80 0c c0 12 8a 00 08 00 00`.
 
 ## Hardware test checklist
 
@@ -282,7 +283,7 @@ Done in the UI round (cable `0xFF19` only, not the receiver):
 Not yet tested:
 
 - [x] Polling (1000 Hz), scroll direction (reversed) and debounce (4 ms) writes over the receiver `0xFF32` confirm in OpenMouse and are still shown after a page reload (2026-10-24).
-- [ ] Lift-off, ripple, angle snapping and Motion Sync writes over the 2.4 GHz receiver.
+- [x] Lift-off (high), ripple (off), angle snapping (on) and Motion Sync (off) writes over the receiver `0xFF32` confirm in OpenMouse and are still shown after a page reload (2026-10-24).
 - [ ] Writes over 2.4 GHz confirm inside the retry window.
 - [ ] E-sports write in OpenMouse, and whether the vendor app follows it.
   User-measured drain is about 8% of battery per day of use with E-sports off
