@@ -34,6 +34,8 @@ class FakeZifriendM6 {
   eSports = 1;
   /** Writes land this many settings reads late, like a relay through the receiver. */
   lag = 0;
+  /** Through the receiver 06 and 07 come from a cache that only a 0x0c wake refreshes (measured). */
+  private cache = new Map<number, Uint8Array>();
   private pending: Array<() => void> = [];
   readonly sent: Uint8Array[] = [];
   private answer = new Uint8Array(20);
@@ -54,7 +56,7 @@ class FakeZifriendM6 {
     const packet = new Uint8Array(data as ArrayBuffer);
     assert.equal(packet.length, 20);
     this.sent.push(packet);
-    this.answer = this.handle(packet);
+    this.answer = this.respond(packet);
   }
 
   async receiveFeatureReport(reportId: number): Promise<DataView> {
@@ -72,6 +74,17 @@ class FakeZifriendM6 {
   private apply(change: () => void): void {
     if (this.lag === 0) change();
     else this.pending.push(change);
+  }
+
+  private respond(packet: Uint8Array): Uint8Array {
+    const command = packet[0]!;
+    if (command === 0x0c) this.cache.clear();
+    if (![1, 3, 4].includes(this.mode) || (command !== 0x06 && command !== 0x07)) return this.handle(packet);
+    const stale = this.cache.get(command);
+    if (stale) return stale;
+    const fresh = this.handle(packet);
+    this.cache.set(command, fresh);
+    return fresh;
   }
 
   private handle(packet: Uint8Array): Uint8Array {
@@ -389,6 +402,36 @@ test("a write relayed late through the receiver is confirmed by re-reading", asy
   fake.lag = 2;
   assert.equal(await client.setDebounceTime(12), 12);
   assert.equal(fake.debounce, 12);
+});
+
+test("through the receiver every 06 and 07 read is preceded by a wake, writes are not", async () => {
+  const { fake, client } = connect();
+  fake.mode = 3;
+  fake.productId = 0xff32;
+  await client.readStatus();
+  await client.setDebounceTime(4);
+  assert.equal(fake.debounce, 4);
+  const commands = fake.sentCommands();
+  const reads = commands.flatMap((command, index) => (command === 0x06 || command === 0x07 ? [index] : []));
+  assert.ok(reads.length >= 4);
+  for (const index of reads) assert.equal(commands[index - 1], 0x0c);
+  assert.notEqual(commands[commands.indexOf(0x43) - 1], 0x0c);
+  const wake = fake.sent.find((packet) => packet[0] === 0x0c)!;
+  assert.deepEqual([...wake.slice(0, 2)], [0x0c, 0x02]);
+});
+
+test("readStatus through the receiver wakes before reading", async () => {
+  const { fake, client } = connect();
+  fake.mode = 3;
+  fake.productId = 0xff32;
+  await client.readStatus();
+  assert.deepEqual(fake.sentCommands().slice(0, 4), [0x0c, 0x06, 0x0c, 0x07]);
+});
+
+test("cable reads send no wake", async () => {
+  const { fake, client } = connect();
+  await client.setDpiStageValue(3, 6400);
+  assert.ok(!fake.sentCommands().includes(0x0c));
 });
 
 test("a write the mouse never keeps is reported, not assumed", async () => {

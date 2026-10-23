@@ -40,6 +40,8 @@ type LiftOff = NonNullable<MouseStatus["liftOffDistance"]>;
 const PRODUCT_IDS = new Set<number>(ZIFRIEND_PRODUCT_IDS);
 /** The vendor driver gives the receiver this long to relay a command to the mouse. */
 const RECEIVER_ANSWER_DELAY_MS = 200;
+/** The receiver answers 06 and 07 from a cache that only a wake refreshes; 300 ms lets it (measured). */
+const WAKE_SETTLE_MS = 300;
 const ANSWER_ATTEMPTS = 5;
 const ANSWER_RETRY_MS = 50;
 /** A relayed write can land after the first read-back, so confirmation is retried. */
@@ -380,7 +382,6 @@ export class ZifriendHidClient {
       return zifriendDecodeSettings(await this.request(identity, zifriendRequest(CMD.settings), CMD.settings));
     } catch (error) {
       if (identity.connection !== "wireless") throw error;
-      await this.request(identity, zifriendRequest(CMD.radioWake, 0x02), CMD.radioWake).catch(() => undefined);
       try {
         return zifriendDecodeSettings(await this.request(identity, zifriendRequest(CMD.settings), CMD.settings));
       } catch {
@@ -411,6 +412,11 @@ export class ZifriendHidClient {
     const viaReceiver = identity ? identity.connection === "wireless" : this.device.productId === ZIFRIEND_M6_RECEIVER_PRODUCT_ID;
     const run = this.queue.then(async () => {
       await this.open();
+      // The wake gets no feature answer, so it is only sent; it is in the same queue slot as the read.
+      if (viaReceiver && (command === CMD.identity || command === CMD.settings)) {
+        await this.device.sendFeatureReport(REPORT_ID, zifriendRequest(CMD.radioWake, 0x02).slice());
+        await delay(WAKE_SETTLE_MS);
+      }
       await this.device.sendFeatureReport(REPORT_ID, packet.slice());
       let lastError: unknown = null;
       for (let attempt = 0; attempt < ANSWER_ATTEMPTS; attempt += 1) {

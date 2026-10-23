@@ -49,6 +49,12 @@ Offsets below are into the payload, after the report ID. The vendor driver
 waits up to 10 × 200 ms for the receiver to relay a 2.4 GHz command, and
 treats `54 E4 00` as success.
 
+Through the receiver, writes apply at once but `06` and `07` are answered from a
+cache that only a wake refreshes. The driver sends `0C 02` (plain feature
+report, no answer is read) and waits 300 ms before every `06`/`07` read,
+including each confirm re-read after a write. Writes get no wake, as in the
+vendor driver, and the driver does not depend on input reports.
+
 ## Commands on report 0x51
 
 | Cmd | Direction | Meaning |
@@ -58,7 +64,7 @@ treats `54 E4 00` as success.
 | `06` | read | Identity, link state and battery |
 | `07` | read | Settings |
 | `0B` | write | `[1]=AA`: factory reset, answered by `54 E6`. `[1]=01, [2]=flags` is also sent, meaning unclear. Neither is used |
-| `0C` | write | `[1]=02`: wake the 2.4 GHz link before reading (answered by `54 E3`) |
+| `0C` | write | `[1]=02`: wake the 2.4 GHz link, sent before every receiver `06`/`07` read; no feature answer, it triggers `54 E4 00` and `54 E3` input reports |
 | `12` | read | Lighting: `[1]` version, `[2]` effect count, `[3]` active effect |
 | `13`–`17` | read | Lighting brightness and RGB (not used) |
 | `22`, `23`, `27`, `28` | write | Lighting effect, brightness, speed, colour (not used) |
@@ -215,6 +221,14 @@ Cable (PID `0xFF19`):
 - `06` battery 91 matched the vendor app's 91%. The linked bit (byte 9, `0x08`)
   dropped to 0 while the mouse idled and came back.
 - `12` was not answered: the buffer kept the previous answer.
+- Receiver debounce 1, 2, 3, 4, 6 in turn, 2026-10-23: after the write `51 43 v`, a `07`
+  read without a wake returned the previous value every time; after `51 0c 02`
+  and 300 ms it returned the new value 5/5 (the wake produced `54 e4 00` and
+  `54 e3`). A wake answered by `54 e4 04` did not refresh the read. So writes
+  apply at once and the receiver reads from a cache the wake refreshes.
+  The vendor driver also sends sensor writes (`42`) and then waits for
+  `54 e4 00`, resending up to 10 times; ours just confirms by wake and re-read,
+  which could be replaced by that wait later.
 - `03` returned the paired mouse `248A:FF19`.
 - After switching the mouse from the cable back to 2.4 GHz, every GetFeature on
   the receiver failed with Windows error 0x1F (the vendor app could not read
@@ -248,7 +262,7 @@ Done in round 1 (cable `0xFF19` and receiver `0xFF32` unless noted):
   alone. Verified for `0xFF19` only.
 - [x] E-sports is not readable (receiver). Bit `0x20` is not E-sports.
 - [x] `12` is not answered, so lighting is not exposed.
-- [ ] DPI write over the receiver (count unknown, byte 14 = 0).
+- [ ] DPI write over the receiver (count unknown, byte 14 = 0). Retest with the wake-before-read fix.
 
 Done in the UI round (cable `0xFF19` only, not the receiver):
 
@@ -258,7 +272,7 @@ Done in the UI round (cable `0xFF19` only, not the receiver):
 
 Not yet tested:
 
-- [ ] The same writes over the 2.4 GHz receiver.
+- [ ] The same writes over the 2.4 GHz receiver (retest with the wake-before-read fix).
 - [ ] Writes over 2.4 GHz confirm inside the retry window.
 - [ ] E-sports write in OpenMouse, and whether the vendor app follows it.
   User-measured drain is about 8% of battery per day of use with E-sports off
