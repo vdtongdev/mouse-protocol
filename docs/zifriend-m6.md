@@ -92,7 +92,7 @@ vendor driver, and the driver does not depend on input reports.
 | 1 | Profile |
 | 2, 3, 4 | USB, 2.4 GHz, Bluetooth: bits 0-3 active DPI stage, bits 4-6 polling gear |
 | 5-14 | Five DPI stages, LE16, raw DPI (factory 400/800/1600/3200/4800) |
-| 15 | Flags: bits 0-1 lift-off code, `0x04` ripple, `0x08` angle snap, `0x10` Motion Sync, `0x20` unknown (not E-sports, see below), `0x40` scroll reversed |
+| 15 | Flags: bits 0-1 lift-off code, `0x04` ripple, `0x08` angle snap, `0x10` Motion Sync, `0x20` unknown (not E-sports, see below), `0x40` scroll reversed, `0x80` seen set after scroll was written as normal and clear after reversed (meaning not confirmed, not E-sports) |
 | 16 | DPI stage count 1-5 over the cable (the vendor calls it `dpi_flag`). The receiver always sends 0, which means unknown, not five. A value above 5 is rejected |
 | 17 | Debounce, ms |
 
@@ -250,6 +250,15 @@ UI errors:
 - `07` afterwards: `07 01 21 21 01 90 01 20 03 72 06 80 0c c0 12 4a 03 04 00 00`.
 - Battery 100, power state 2 (full) on the cable.
 
+Receiver (PID `0xFF32`), UI round, 2026-10-24, with the wake-before-read fix. Every
+change was made in the OpenMouse UI and read back from `07`, with no UI errors:
+
+- Polling 500 to 1000 Hz (gear 2), DPI stage 3 1650 to 1700, scroll normal to
+  reversed, debounce 6 to 4 ms. The stage count stayed unknown over the receiver.
+- Independent read (wake, 300 ms, `07`): `07 01 21 21 21 90 01 20 03 a4 06 80 0c c0 12 55 00 04 00 00`.
+- Performance mode was on in OpenMouse while byte 15 read `0x55` (bits `0x20` and
+  `0x80` clear), so neither bit is E-sports.
+
 ## Hardware test checklist
 
 Done in round 1 (cable `0xFF19` and receiver `0xFF32` unless noted):
@@ -262,7 +271,7 @@ Done in round 1 (cable `0xFF19` and receiver `0xFF32` unless noted):
   alone. Verified for `0xFF19` only.
 - [x] E-sports is not readable (receiver). Bit `0x20` is not E-sports.
 - [x] `12` is not answered, so lighting is not exposed.
-- [ ] DPI write over the receiver (count unknown, byte 14 = 0). Retest with the wake-before-read fix.
+- [x] DPI write over the receiver (count unknown, byte 14 = 0): stage 3 1650 to 1700, count unchanged (receiver `0xFF32`, 2026-10-24).
 
 Done in the UI round (cable `0xFF19` only, not the receiver):
 
@@ -272,7 +281,8 @@ Done in the UI round (cable `0xFF19` only, not the receiver):
 
 Not yet tested:
 
-- [ ] The same writes over the 2.4 GHz receiver (retest with the wake-before-read fix).
+- [x] Polling (1000 Hz), scroll direction (reversed) and debounce (4 ms) writes over the receiver `0xFF32` confirm in OpenMouse and are still shown after a page reload (2026-10-24).
+- [ ] Lift-off, ripple, angle snapping and Motion Sync writes over the 2.4 GHz receiver.
 - [ ] Writes over 2.4 GHz confirm inside the retry window.
 - [ ] E-sports write in OpenMouse, and whether the vendor app follows it.
   User-measured drain is about 8% of battery per day of use with E-sports off
