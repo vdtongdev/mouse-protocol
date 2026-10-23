@@ -45,6 +45,8 @@ const ANSWER_RETRY_MS = 50;
 /** A relayed write can land after the first read-back, so confirmation is retried. */
 const CONFIRM_ATTEMPTS = 5;
 const CONFIRM_RETRY_MS = 200;
+/** After a cable to 2.4 GHz switch the receiver can fail every read until it is replugged (measured). */
+const REPLUG_HINT = "The receiver did not answer its settings read. Unplug and replug the receiver, then try again.";
 
 /**
  * ZIFRIEND M6 over its cable or its 2.4 GHz receiver. See
@@ -63,7 +65,7 @@ export class ZifriendHidClient {
   /** Feature writes and reads come in pairs, so they run one at a time. */
   private queue: Promise<unknown> = Promise.resolve();
   private identity: ZifriendIdentity | null = null;
-  /** Last E-sports value written this session, for firmware that does not read it back. */
+  /** Last E-sports value written this session. The mouse cannot be asked, and neither can the vendor app. */
   private eSportsWritten: boolean | null = null;
 
   constructor(device: HIDDevice) {
@@ -113,7 +115,7 @@ export class ZifriendHidClient {
     try {
       settings = await this.readSettings(identity);
     } catch {
-      return this.limitedStatus(identity, "The mouse did not answer its settings read. Reconnect it and try again.");
+      return this.limitedStatus(identity, identity.connection === "wireless" ? REPLUG_HINT : "The mouse did not answer its settings read. Reconnect it and try again.");
     }
     const activeStage = zifriendActiveStage(settings, identity.connection);
     const gear = zifriendPollingGear(settings, identity.connection);
@@ -133,7 +135,8 @@ export class ZifriendHidClient {
         forceShowBattery: true,
         dpiStageEditor: {
           maxStages: DPI_STAGE_COUNT,
-          countEditable: true,
+          // The receiver does not relay the count, so it cannot be shown or changed there.
+          countEditable: settings.stageCount !== null,
           minDpi: DPI_MIN,
           maxDpi: DPI_MAX,
           stepDpi: DPI_STEP,
@@ -141,7 +144,7 @@ export class ZifriendHidClient {
       },
       ...this.battery(identity),
       dpi: settings.dpiStages[activeStage] ?? settings.dpiStages[0] ?? 800,
-      dpiStages: settings.dpiStages.slice(0, settings.stageCount),
+      dpiStages: settings.dpiStages.slice(0, settings.stageCount ?? DPI_STAGE_COUNT),
       activeDpiStage: activeStage,
       pollingRateHz: POLLING_RATES[gear] ?? 1000,
       supportedPollingRates: this.getSupportedPollingRates(),
@@ -153,7 +156,7 @@ export class ZifriendHidClient {
       motionSync: settings.motionSync,
       angleSnapping: settings.angleSnapping,
       rippleControl: settings.rippleControl,
-      performanceMode: this.eSportsWritten ?? settings.eSportsBit,
+      performanceMode: this.eSportsWritten,
       scrollDirection: settings.scrollReversed ? "Reverse" : "Forward",
       debounceMs: settings.debounceMs,
       firmware: [zifriendFirmwareLabel(identity.firmware)],
@@ -170,7 +173,7 @@ export class ZifriendHidClient {
     requireDpi(dpi);
     const identity = await this.readWritableIdentity();
     const settings = await this.readSettings(identity);
-    requireStage(stage, settings.stageCount);
+    requireStage(stage, settings.stageCount ?? DPI_STAGE_COUNT);
     const stages = settings.dpiStages.map((value, index) => (index === stage ? dpi : value));
     await this.write(zifriendEncodeDpi(identity.connection, zifriendActiveStage(settings, identity.connection), stages, settings.stageCount));
     const confirmed = await this.confirm(identity, (next) => next.dpiStages[stage] === dpi);
@@ -183,7 +186,7 @@ export class ZifriendHidClient {
   async setActiveDpiStage(stage: number): Promise<number> {
     const identity = await this.readWritableIdentity();
     const settings = await this.readSettings(identity);
-    requireStage(stage, settings.stageCount);
+    requireStage(stage, settings.stageCount ?? DPI_STAGE_COUNT);
     await this.write(zifriendEncodeDpi(identity.connection, stage, settings.dpiStages, settings.stageCount));
     const confirmed = zifriendActiveStage(
       await this.confirm(identity, (next) => zifriendActiveStage(next, identity.connection) === stage),
@@ -199,6 +202,9 @@ export class ZifriendHidClient {
     }
     const identity = await this.readWritableIdentity();
     const settings = await this.readSettings(identity);
+    if (settings.stageCount === null) {
+      throw new Error("The 2.4 GHz receiver does not report the DPI stage count, so a change cannot be confirmed. Connect the mouse with the cable to change it.");
+    }
     const active = Math.min(zifriendActiveStage(settings, identity.connection), count - 1);
     await this.write(zifriendEncodeDpi(identity.connection, active, settings.dpiStages, count));
     const confirmed = (await this.confirm(identity, (next) => next.stageCount === count)).stageCount;
@@ -247,9 +253,9 @@ export class ZifriendHidClient {
 
   /**
    * The vendor's "E-sports mode". Off is the firmware's power-saving
-   * behaviour. The vendor driver never reads this back, so a write is
-   * reported as applied once the mouse accepts it; bit 5 of the sensor flags
-   * is checked when it follows along.
+   * behaviour. Measured: no byte of the settings read follows it, and the
+   * vendor app never reads it back either, so a write cannot be confirmed and
+   * is reported as applied once sent.
    */
   async setPerformanceMode(enabled: boolean): Promise<boolean> {
     const identity = await this.readWritableIdentity();
@@ -354,7 +360,11 @@ export class ZifriendHidClient {
     } catch (error) {
       if (identity.connection !== "wireless") throw error;
       await this.request(identity, zifriendRequest(CMD.radioWake, 0x02), CMD.radioWake).catch(() => undefined);
-      return zifriendDecodeSettings(await this.request(identity, zifriendRequest(CMD.settings), CMD.settings));
+      try {
+        return zifriendDecodeSettings(await this.request(identity, zifriendRequest(CMD.settings), CMD.settings));
+      } catch {
+        throw new Error(REPLUG_HINT);
+      }
     }
   }
 

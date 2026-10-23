@@ -111,17 +111,12 @@ export interface ZifriendSettings {
   /** USB, 2.4 GHz, Bluetooth: DPI stage in bits 0-3, polling gear in bits 4-6. */
   levels: [number, number, number];
   dpiStages: number[];
-  stageCount: number;
+  /** 1-5 over the cable. The receiver sends 0 and never relays the count, so it is null there. */
+  stageCount: number | null;
   lod: number;
   rippleControl: boolean;
   angleSnapping: boolean;
   motionSync: boolean;
-  /**
-   * Bit 5 of the sensor flags. The vendor driver never reads E-sports mode
-   * back; the factory flags (53 = 0x35) have this bit set and E-sports on by
-   * default, so it is the likeliest home. Unconfirmed until tested on hardware.
-   */
-  eSportsBit: boolean;
   scrollReversed: boolean;
   debounceMs: number;
 }
@@ -216,8 +211,9 @@ export function zifriendFirmwareLabel(firmware: number): string {
 export function zifriendDecodeSettings(bytes: Uint8Array): ZifriendSettings {
   if (bytes[0] !== ZIFRIEND_COMMAND.settings || bytes.length < 18) throw new Error("Truncated ZIFRIEND settings answer.");
   const flags = bytes[15] ?? 0;
-  const stageCount = bytes[16] ?? 0;
-  if (stageCount < 1 || stageCount > ZIFRIEND_DPI_STAGE_COUNT) throw new Error(`Invalid ZIFRIEND DPI stage count ${stageCount}.`);
+  // Measured: 3 over the cable; always 0 over the receiver, which does not relay it.
+  const stageCount = bytes[16] || null;
+  if (stageCount !== null && stageCount > ZIFRIEND_DPI_STAGE_COUNT) throw new Error(`Invalid ZIFRIEND DPI stage count ${stageCount}.`);
   return {
     profile: bytes[1] ?? 0,
     levels: [bytes[2] ?? 0, bytes[3] ?? 0, bytes[4] ?? 0],
@@ -227,14 +223,13 @@ export function zifriendDecodeSettings(bytes: Uint8Array): ZifriendSettings {
     rippleControl: (flags & 0x04) !== 0,
     angleSnapping: (flags & 0x08) !== 0,
     motionSync: (flags & 0x10) !== 0,
-    eSportsBit: (flags & 0x20) !== 0,
     scrollReversed: (flags & 0x40) !== 0,
     debounceMs: bytes[17] ?? 0,
   };
 }
 
 export function zifriendActiveStage(settings: ZifriendSettings, connection: ZifriendConnection): number {
-  return Math.min((settings.levels[zifriendSlot(connection)] ?? 0) & 0x0f, settings.stageCount - 1);
+  return Math.min((settings.levels[zifriendSlot(connection)] ?? 0) & 0x0f, (settings.stageCount ?? ZIFRIEND_DPI_STAGE_COUNT) - 1);
 }
 
 export function zifriendPollingGear(settings: ZifriendSettings, connection: ZifriendConnection): number {
@@ -249,18 +244,19 @@ function slotted(connection: ZifriendConnection, value: number): [number, number
 
 /**
  * 0x40: active stage for the current connection only (the other two slots
- * are 0xff, as the vendor driver sends them), five stages, stage count.
+ * are 0xff, as the vendor driver sends them), five stages, stage count. A null
+ * count is sent as 0, which the cable was measured to treat as "leave alone".
  */
 export function zifriendEncodeDpi(
   connection: ZifriendConnection,
   activeStage: number,
   dpiStages: readonly number[],
-  stageCount: number,
+  stageCount: number | null,
 ): Uint8Array {
-  if (!Number.isInteger(stageCount) || stageCount < 1 || stageCount > ZIFRIEND_DPI_STAGE_COUNT) {
+  if (stageCount !== null && (!Number.isInteger(stageCount) || stageCount < 1 || stageCount > ZIFRIEND_DPI_STAGE_COUNT)) {
     throw new RangeError(`ZIFRIEND stage count must be 1-${ZIFRIEND_DPI_STAGE_COUNT}.`);
   }
-  if (!Number.isInteger(activeStage) || activeStage < 0 || activeStage >= stageCount) {
+  if (!Number.isInteger(activeStage) || activeStage < 0 || activeStage >= (stageCount ?? ZIFRIEND_DPI_STAGE_COUNT)) {
     throw new RangeError("ZIFRIEND active stage is outside the stage count.");
   }
   if (dpiStages.length !== ZIFRIEND_DPI_STAGE_COUNT) throw new RangeError("ZIFRIEND DPI writes carry all five stages.");
@@ -270,7 +266,7 @@ export function zifriendEncodeDpi(
     if (!Number.isInteger(dpi) || dpi < 0 || dpi > 0xffff) throw new RangeError("Invalid ZIFRIEND DPI value.");
     putU16(packet, 4 + stage * 2, dpi);
   });
-  packet[14] = stageCount;
+  packet[14] = stageCount ?? 0;
   return packet;
 }
 

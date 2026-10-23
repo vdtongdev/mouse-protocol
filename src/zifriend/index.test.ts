@@ -112,7 +112,7 @@ test("identity answer: IDs, firmware, link bits, battery and power state", () =>
 });
 
 test("settings answer: levels, five stages, flags, stage count and debounce", () => {
-  // Factory sensor flags 53 (0x35): LOD 1, ripple, motion sync, bit 5.
+  // Factory sensor flags 53 (0x35): LOD 1, ripple, motion sync (bit 5 is not decoded).
   const settings = zifriendDecodeSettings(packet(
     0x07, 0, 0x21, 0x12, 0x00,
     0x90, 0x01, 0x20, 0x03, 0x40, 0x06, 0x80, 0x0c, 0xc0, 0x12,
@@ -127,7 +127,6 @@ test("settings answer: levels, five stages, flags, stage count and debounce", ()
     rippleControl: true,
     angleSnapping: false,
     motionSync: true,
-    eSportsBit: true,
     scrollReversed: false,
     debounceMs: 8,
   });
@@ -141,9 +140,73 @@ test("settings answer: levels, five stages, flags, stage count and debounce", ()
   assert.equal(reversed.lod, 2);
 });
 
+// Captured from hardware, mouse firmware 0x0201.
+const SETTINGS_CABLE = [0x07, 0x01, 0x11, 0x11, 0x01, 0x90, 0x01, 0x20, 0x03, 0x40, 0x06, 0x80, 0x0c, 0xc0, 0x12, 0x15, 0x03, 0x08, 0x00, 0x00];
+const SETTINGS_RECEIVER = [0x07, 0x01, 0x11, 0x11, 0x11, 0x90, 0x01, 0x20, 0x03, 0x40, 0x06, 0x80, 0x0c, 0xc0, 0x12, 0x15, 0x00, 0x08, 0x00, 0x00];
+
+test("captured 0x07 over the cable (0xff19) carries the real stage count", () => {
+  const settings = zifriendDecodeSettings(Uint8Array.from(SETTINGS_CABLE));
+  assert.deepEqual(settings, {
+    profile: 1,
+    levels: [0x11, 0x11, 0x01],
+    dpiStages: [400, 800, 1600, 3200, 4800],
+    stageCount: 3,
+    lod: 1,
+    rippleControl: true,
+    angleSnapping: false,
+    motionSync: true,
+    scrollReversed: false,
+    debounceMs: 8,
+  });
+});
+
+test("captured 0x07 over the receiver (0xff32): stage count byte 0 means unknown, not five", () => {
+  const settings = zifriendDecodeSettings(Uint8Array.from(SETTINGS_RECEIVER));
+  assert.equal(settings.stageCount, null);
+  assert.equal(zifriendActiveStage({ ...settings, levels: [0x04, 0x04, 0x04] }, "usb"), 4);
+  assert.equal(zifriendActiveStage({ ...settings, levels: [0x0f, 0, 0] }, "usb"), 4, "clamped to 0-4");
+});
+
+test("captured 0x06 over the cable: USB, battery 99, power state 1", () => {
+  const identity = zifriendDecodeIdentity(Uint8Array.from([
+    0x06, 0x01, 0x00, 0x8a, 0x24, 0x19, 0xff, 0x01, 0x02, 0x00, 0x63, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  ]));
+  assert.equal(identity.connection, "usb");
+  assert.equal(identity.batteryPercent, 99);
+  assert.equal(identity.powerState, 1);
+});
+
+test("DPI write with an unknown stage count sends 0 in byte 14 (leave alone, proven on the cable)", () => {
+  assert.deepEqual([...zifriendEncodeDpi("usb", 0, [400, 800, 1600, 3200, 4800], null)], [...packet(
+    0x40, 0x00, 0xff, 0xff,
+    0x90, 0x01, 0x20, 0x03, 0x40, 0x06, 0x80, 0x0c, 0xc0, 0x12,
+    0,
+  )]);
+  assert.doesNotThrow(() => zifriendEncodeDpi("usb", 4, [400, 800, 1600, 3200, 4800], null));
+  assert.throws(() => zifriendEncodeDpi("usb", 5, [400, 800, 1600, 3200, 4800], null), RangeError);
+});
+
+// Captured from hardware, same session.
+test("captured 0x06 identity and 0x03 paired-mouse answers decode", () => {
+  assert.deepEqual(zifriendDecodeIdentity(Uint8Array.from([
+    0x06, 0x01, 0x00, 0x8a, 0x24, 0x19, 0xff, 0x01, 0x02, 0x09, 0x5b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  ])), {
+    protocolVersion: 1,
+    vendorId: 0x248a,
+    productId: 0xff19,
+    firmware: 0x0201,
+    connection: "wireless",
+    linked: true,
+    batteryPercent: 91,
+    powerState: 0,
+  });
+  assert.deepEqual(zifriendDecodePairedMouse(Uint8Array.from([
+    0x03, 0x01, 0x8a, 0x24, 0x19, 0xff, 0x01, 0x01, 0x02, 0x09, 0x5b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  ])), { vendorId: 0x248a, productId: 0xff19 });
+});
+
 test("settings answer is rejected when truncated or the stage count is impossible", () => {
   assert.throws(() => zifriendDecodeSettings(new Uint8Array([0x07, 0, 0])), /Truncated/);
-  assert.throws(() => zifriendDecodeSettings(packet(0x07)), /stage count 0/);
   const sixStages = packet(0x07);
   sixStages[16] = 6;
   assert.throws(() => zifriendDecodeSettings(sixStages), /stage count 6/);

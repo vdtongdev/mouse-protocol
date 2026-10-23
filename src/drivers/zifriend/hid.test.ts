@@ -24,6 +24,10 @@ class FakeZifriendM6 {
   levels = [0x21, 0x21, 0x21];
   dpiStages = [400, 800, 1600, 3200, 4800];
   stageCount = 5;
+  /** The receiver does not relay the stage count: byte 16 reads 0 although the mouse holds `stageCount`. */
+  hidesStageCount = false;
+  /** False plays a receiver whose settings read gets no answer. */
+  answers07 = true;
   flags = 0x35;
   debounce = 8;
   /** Last E-sports byte the mouse received; 0 never arrives from a sensor write. */
@@ -78,6 +82,7 @@ class FakeZifriendM6 {
         answer.set([0x06, 2, 0, 0x8a, 0x24, 0x19, 0xff, 0x12, 0x01, this.mode | (this.linked ? 0x08 : 0), this.battery, this.power]);
         break;
       case 0x07: {
+        if (!this.answers07) return new Uint8Array(20);
         if (this.pending.length) {
           if (this.lag > 0) this.lag -= 1;
           else this.pending.splice(0).forEach((change) => change());
@@ -85,7 +90,7 @@ class FakeZifriendM6 {
         answer.set(this.levels, 2);
         this.dpiStages.forEach((dpi, index) => answer.set([dpi & 0xff, dpi >> 8], 5 + index * 2));
         answer[15] = this.flags;
-        answer[16] = this.stageCount;
+        answer[16] = this.hidesStageCount ? 0 : this.stageCount;
         answer[17] = this.debounce;
         break;
       }
@@ -96,7 +101,7 @@ class FakeZifriendM6 {
         this.apply(() => {
           this.levels = this.levels.map((level, slot) => (stages[slot] === 0xff ? level : (level & 0xf0) | stages[slot]!));
           this.dpiStages = dpi;
-          this.stageCount = count;
+          if (count !== 0) this.stageCount = count; // 0 leaves the count alone
         });
         break;
       }
@@ -163,6 +168,42 @@ test("registry and picker filters route the M6 to this driver alone", () => {
   }
 });
 
+test("receiver with an unknown stage count: all five slots, count picker hidden, DPI writes send 0 and keep the real count", async () => {
+  const { client, fake } = connect();
+  fake.mode = 3;
+  fake.stageCount = 3;
+  fake.hidesStageCount = true;
+  const status = await client.readStatus();
+  assert.equal(status.dpiStages?.length, 5);
+  assert.equal(status.ui?.dpiStageEditor?.countEditable, false);
+  assert.equal(await client.setDpiStageValue(4, 6400), 6400);
+  assert.equal(await client.setActiveDpiStage(4), 4);
+  assert.deepEqual(fake.sent.filter((packet) => packet[0] === 0x40).map((packet) => packet[14]), [0, 0]);
+  assert.equal(fake.stageCount, 3, "the mouse's real count is untouched");
+  assert.equal(fake.dpiStages[4], 6400);
+});
+
+test("a known stage count keeps the count picker editable", async () => {
+  const { client } = connect();
+  assert.equal((await client.readStatus()).ui?.dpiStageEditor?.countEditable, true);
+});
+
+test("setDpiStageCount with an unknown count asks for the cable and sends nothing", async () => {
+  const { client, fake } = connect();
+  fake.mode = 3;
+  fake.hidesStageCount = true;
+  await assert.rejects(client.setDpiStageCount(2), /cable/);
+  assert.ok(!fake.sentCommands().includes(0x40));
+});
+
+test("receiver errors tell the user to replug the receiver", async () => {
+  const { client, fake } = connect();
+  fake.mode = 3;
+  fake.answers07 = false;
+  const status = await client.readStatus();
+  assert.match(status.ui?.statusNote ?? "", /unplug and replug the receiver/i);
+});
+
 test("reads a wired status: stages, polling, sensor options, debounce and battery", async () => {
   const { client } = connect();
   const status = await client.readStatus();
@@ -178,7 +219,7 @@ test("reads a wired status: stages, polling, sensor options, debounce and batter
   assert.equal(status.rippleControl, true);
   assert.equal(status.angleSnapping, false);
   assert.equal(status.motionSync, true);
-  assert.equal(status.performanceMode, true);
+  assert.equal(status.performanceMode, null, "E-sports cannot be read back");
   assert.equal(status.scrollDirection, "Forward");
   assert.equal(status.debounceMs, 8);
   assert.equal(status.batteryPercent, 64);
@@ -282,6 +323,7 @@ test("sensor writes keep every other option and never touch E-sports", async () 
 
 test("E-sports (performance mode) is written explicitly and reported from the last write", async () => {
   const { fake, client } = connect();
+  assert.equal((await client.readStatus()).performanceMode, null);
   assert.equal(await client.setPerformanceMode(false), false);
   assert.equal(fake.eSports, 2);
   assert.equal((await client.readStatus()).performanceMode, false);
