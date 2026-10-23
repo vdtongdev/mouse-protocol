@@ -219,7 +219,7 @@ test("reads a wired status: stages, polling, sensor options, debounce and batter
   assert.equal(status.rippleControl, true);
   assert.equal(status.angleSnapping, false);
   assert.equal(status.motionSync, true);
-  assert.equal(status.performanceMode, null, "E-sports cannot be read back");
+  assert.equal(status.performanceMode, false, "E-sports cannot be read back; reported off until written");
   assert.equal(status.scrollDirection, "Forward");
   assert.equal(status.debounceMs, 8);
   assert.equal(status.batteryPercent, 64);
@@ -323,7 +323,7 @@ test("sensor writes keep every other option and never touch E-sports", async () 
 
 test("E-sports (performance mode) is written explicitly and reported from the last write", async () => {
   const { fake, client } = connect();
-  assert.equal((await client.readStatus()).performanceMode, null);
+  assert.equal((await client.readStatus()).performanceMode, false);
   assert.equal(await client.setPerformanceMode(false), false);
   assert.equal(fake.eSports, 2);
   assert.equal((await client.readStatus()).performanceMode, false);

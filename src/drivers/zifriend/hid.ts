@@ -156,7 +156,8 @@ export class ZifriendHidClient {
       motionSync: settings.motionSync,
       angleSnapping: settings.angleSnapping,
       rippleControl: settings.rippleControl,
-      performanceMode: this.eSportsWritten,
+      // E-sports is not readable and the tested unit shipped with it off; writes are absolute, so showing off is safe.
+      performanceMode: this.eSportsWritten ?? false,
       scrollDirection: settings.scrollReversed ? "Reverse" : "Forward",
       debounceMs: settings.debounceMs,
       firmware: [zifriendFirmwareLabel(identity.firmware)],

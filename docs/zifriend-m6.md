@@ -127,8 +127,12 @@ write except its own, and never flips it as a side effect.
 E-sports is write-only. Toggling it in the vendor app changed nothing in `07`
 (byte 15 stayed `0x15`), and the vendor app never reads it back either. Bit
 `0x20` of byte 15 is therefore not E-sports; what it is remains unknown. The
-driver reports the performance mode as unknown until it is written in the
-session, then shows the last value written. A write cannot be confirmed.
+driver reports the performance mode as off until it is written in the
+session, then shows the last value written. Off is the default because the
+tested unit shipped with it off, and it keeps the switch visible in OpenMouse
+(which hides the card for an unknown value). Writes are absolute (byte 7 = 1 on,
+2 off), so a wrong display never flips the setting the wrong way. A write cannot
+be confirmed.
 
 ### `43` debounce
 
@@ -217,6 +221,19 @@ Cable (PID `0xFF19`):
 - The feature buffer is shared with other processes: one read collected the
   vendor app's `04` answer. `zifriendAnswer` rejects answers to other commands.
 
+Cable (PID `0xFF19`), UI round, 2026-10-23. Every change was made in the
+OpenMouse UI and read back from `07`; all survived an unplug and replug, with no
+UI errors:
+
+- Polling 500 to 1000 Hz (gear 2). The 2.4 GHz slot (byte 3) also changed to
+  gear 2 although the write only targeted the USB slot, so the mouse applies
+  polling to all slots.
+- Lift-off Low to High, ripple on to off, angle snapping off to on, Motion Sync
+  on to off, scroll forward to reversed, debounce 8 to 4 ms, DPI stage 3 1600 to
+  1650 (stage count stayed 3).
+- `07` afterwards: `07 01 21 21 01 90 01 20 03 72 06 80 0c c0 12 4a 03 04 00 00`.
+- Battery 100, power state 2 (full) on the cable.
+
 ## Hardware test checklist
 
 Done in round 1 (cable `0xFF19` and receiver `0xFF32` unless noted):
@@ -231,10 +248,15 @@ Done in round 1 (cable `0xFF19` and receiver `0xFF32` unless noted):
 - [x] `12` is not answered, so lighting is not exposed.
 - [ ] DPI write over the receiver (count unknown, byte 14 = 0).
 
+Done in the UI round (cable `0xFF19` only, not the receiver):
+
+- [x] Polling rate, lift-off, ripple, angle snapping, Motion Sync, scroll
+  direction and debounce writes round-trip and survive a replug.
+- [x] DPI stage value write from the UI (stage 3, count unchanged).
+
 Not yet tested:
 
-- [ ] Polling rate, lift-off, ripple, angle snapping, Motion Sync, scroll
-  direction and debounce writes, on both paths.
+- [ ] The same writes over the 2.4 GHz receiver.
 - [ ] Writes over 2.4 GHz confirm inside the retry window.
 - [ ] E-sports write in OpenMouse, and whether the vendor app follows it.
   User-measured drain is about 8% of battery per day of use with E-sports off
