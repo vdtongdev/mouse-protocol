@@ -70,7 +70,7 @@ vendor driver, and the driver does not depend on input reports.
 | `22`, `23`, `27`, `28` | write | Lighting effect, brightness, speed, colour (not used) |
 | `40` | write | DPI |
 | `41` | write | Polling rate |
-| `42` | write | Sensor and power options |
+| `42` | write | Sensor options and E-sports mode |
 | `43` | write | Debounce |
 
 ### `06` identity
@@ -124,11 +124,12 @@ sends gear indexes here instead.
 | 3 | Angle snapping, 1 on / 2 off |
 | 4 | Motion Sync, 1 on / 2 off |
 | 6 | Scroll direction, 1 forward / 2 reversed |
-| 7 | E-sports mode, 1 on / 2 off (the vendor driver seeds it on; the tested unit shipped with it off) |
+| 7 | E-sports mode, 2 on / 1 off (vendor app, static analysis; its default is 1, off). Never 0 |
 
-The vendor driver sends every byte from its own database. Keychron's decode
-says 0 leaves a toggle unchanged, so the driver sends 0 for E-sports on every
-write except its own, and never flips it as a side effect.
+The vendor driver sends every byte from its own database, byte 5 is always 0,
+and byte 7 is its stored E-sports value (1 or 2, never 0) with every sensor
+write. The driver does the same: each sensor write resends the remembered
+E-sports value (this session's last write, else `localStorage`, else off).
 
 E-sports is write-only. Toggling it in the vendor app changed nothing in `07`
 (byte 15 stayed `0x15`), and the vendor app never reads it back either. Bit
@@ -138,9 +139,12 @@ driver shows the last value set in OpenMouse in this browser (kept in
 the receiver); changes made in the vendor app are not seen. With nothing stored
 it reports off. Off is the default because the
 tested unit shipped with it off, and it keeps the switch visible in OpenMouse
-(which hides the card for an unknown value). Writes are absolute (byte 7 = 1 on,
-2 off), so a wrong display never flips the setting the wrong way. A write cannot
-be confirmed.
+(which hides the card for an unknown value). Writes are absolute (byte 7 = 2 on,
+1 off), so a wrong display never flips the setting the wrong way. A write cannot
+be confirmed. The vendor app keeps the flag in its own database and nothing in
+its code or text links E-sports to power, sleep or battery, so there is no
+evidence it saves power. Before this fix OpenMouse "on" sent 1, which is
+actually off.
 
 ### `43` debounce
 
@@ -186,8 +190,8 @@ the real percentage.
 
 - What byte 15 bit `0x20` means. It is set in the vendor seed flags `0x35` and clear in
   `0x15`, and does not follow E-sports.
-- Whether "E-sports off" lowers power draw is the vendor's framing of the
-  setting. Its effect on battery life has not been measured.
+- Whether E-sports (either state) changes power draw. No evidence it does; its
+  effect on battery life has not been measured.
 - Whether the receiver can ever report the DPI stage count. Over 2.4 GHz the
   driver hides the count picker and refuses to change the count.
 - Whether `12` is answered by any firmware or connection.

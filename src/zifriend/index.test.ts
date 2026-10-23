@@ -62,11 +62,10 @@ test("polling write carries the gear, then the 125/500/1000 Hz table as little-e
   assert.throws(() => zifriendEncodePolling("usb", 3), RangeError);
 });
 
-test("sensor write uses 1 on / 2 off, scroll 1 forward / 2 reversed, and leaves E-sports alone unless asked", () => {
-  const base = { lod: 1, rippleControl: true, angleSnapping: false, motionSync: true, scrollReversed: false };
-  assert.deepEqual([...zifriendEncodeSensor(base)], [...packet(0x42, 1, 1, 2, 1, 0, 1, 0)]);
-  assert.deepEqual([...zifriendEncodeSensor({ ...base, lod: 2, scrollReversed: true, eSports: false })], [...packet(0x42, 2, 1, 2, 1, 0, 2, 2)]);
-  assert.equal(zifriendEncodeSensor({ ...base, eSports: true })[7], 1);
+test("sensor write uses 1 on / 2 off, scroll 1 forward / 2 reversed, E-sports 2 on / 1 off", () => {
+  const base = { lod: 1, rippleControl: true, angleSnapping: false, motionSync: true, scrollReversed: false, eSports: false };
+  assert.deepEqual([...zifriendEncodeSensor(base)], [...packet(0x42, 1, 1, 2, 1, 0, 1, 1)]);
+  assert.deepEqual([...zifriendEncodeSensor({ ...base, lod: 2, scrollReversed: true, eSports: true })], [...packet(0x42, 2, 1, 2, 1, 0, 2, 2)]);
   assert.throws(() => zifriendEncodeSensor({ ...base, lod: 3 }), RangeError);
 });
 

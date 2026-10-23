@@ -30,7 +30,7 @@ class FakeZifriendM6 {
   answers07 = true;
   flags = 0x35;
   debounce = 8;
-  /** Last E-sports byte the mouse received; 0 never arrives from a sensor write. */
+  /** Last E-sports byte the mouse received (2 on, 1 off); 0 must never arrive. */
   eSports = 1;
   /** Writes land this many settings reads late, like a relay through the receiver. */
   lag = 0;
@@ -135,7 +135,8 @@ class FakeZifriendM6 {
           if (angle === 1) flags |= 0x08;
           if (motion === 1) flags |= 0x10;
           if (scroll === 2) flags |= 0x40;
-          if (eSports) this.eSports = eSports;
+          assert.ok(eSports === 1 || eSports === 2, "E-sports byte is 1 or 2");
+          this.eSports = eSports!;
           this.flags = flags;
         });
         break;
@@ -320,7 +321,7 @@ test("polling rate writes the gear for the current connection and the hertz tabl
   await assert.rejects(client.setPollingRate(2000), RangeError);
 });
 
-test("sensor writes keep every other option and never touch E-sports", async () => {
+test("sensor writes keep every other option and resend the remembered E-sports value", async () => {
   const { fake, client } = connect();
   await client.setLiftOffDistance("High");
   assert.equal(fake.flags & 0x03, 2);
@@ -330,18 +331,25 @@ test("sensor writes keep every other option and never touch E-sports", async () 
   assert.equal(await client.setScrollDirection("Reverse"), "Reverse");
   assert.equal(fake.flags & 0x5f, 0x02 | 0x08 | 0x40);
   assert.equal(fake.eSports, 1);
-  for (const packet of fake.sent.filter((sent) => sent[0] === 0x42)) assert.equal(packet[7], 0);
+  for (const packet of fake.sent.filter((sent) => sent[0] === 0x42)) assert.equal(packet[7], 1);
   await assert.rejects(client.setLiftOffDistance("Medium"), RangeError);
+});
+
+test("a sensor write after enabling E-sports resends on (2)", async () => {
+  const { fake, client } = connect();
+  await client.setPerformanceMode(true);
+  await client.setLiftOffDistance("High");
+  assert.equal(fake.eSports, 2);
 });
 
 test("E-sports (performance mode) is written explicitly and reported from the last write", async () => {
   const { fake, client } = connect();
   assert.equal((await client.readStatus()).performanceMode, false);
   assert.equal(await client.setPerformanceMode(false), false);
-  assert.equal(fake.eSports, 2);
+  assert.equal(fake.eSports, 1);
   assert.equal((await client.readStatus()).performanceMode, false);
   assert.equal(await client.setPerformanceMode(true), true);
-  assert.equal(fake.eSports, 1);
+  assert.equal(fake.eSports, 2);
 });
 
 /** Runs with a stubbed localStorage (plain node has none); `storage` overrides it, e.g. to throw. */
@@ -383,7 +391,7 @@ test("missing or broken storage falls back to off and never blocks the write", a
     const { fake, client } = connect();
     assert.equal((await client.readStatus()).performanceMode, false);
     assert.equal(await client.setPerformanceMode(true), true);
-    assert.equal(fake.eSports, 1);
+    assert.equal(fake.eSports, 2);
     assert.equal((await client.readStatus()).performanceMode, true);
   });
 });

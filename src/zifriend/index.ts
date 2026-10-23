@@ -285,8 +285,8 @@ export interface ZifriendSensorWrite {
   angleSnapping: boolean;
   motionSync: boolean;
   scrollReversed: boolean;
-  /** Omit to send 0, which the family's firmware treats as "leave alone". */
-  eSports?: boolean;
+  /** Sent as 2 on / 1 off (the reverse of the other toggles); the vendor app resends it with every sensor write. */
+  eSports: boolean;
 }
 
 /** 0x42: every sensor option at once. Toggles are 1 on, 2 off; scroll is 1 forward, 2 reversed. */
@@ -298,7 +298,7 @@ export function zifriendEncodeSensor(sensor: ZifriendSensorWrite): Uint8Array {
   packet[3] = toggle(sensor.angleSnapping);
   packet[4] = toggle(sensor.motionSync);
   packet[6] = sensor.scrollReversed ? 2 : 1;
-  packet[7] = sensor.eSports === undefined ? 0 : toggle(sensor.eSports);
+  packet[7] = sensor.eSports ? 2 : 1;
   return packet;
 }
 

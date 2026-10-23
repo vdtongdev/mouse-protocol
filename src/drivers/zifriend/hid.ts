@@ -274,10 +274,9 @@ export class ZifriendHidClient {
   }
 
   /**
-   * The vendor's "E-sports mode". Off is the firmware's power-saving
-   * behaviour. Measured: no byte of the settings read follows it, and the
-   * vendor app never reads it back either, so a write cannot be confirmed and
-   * is reported as applied once sent.
+   * The vendor's "E-sports mode" (no evidence it affects power). Measured: no byte of the
+   * settings read follows it, and the vendor app never reads it back either, so a
+   * write cannot be confirmed and is reported as applied once sent.
    */
   async setPerformanceMode(enabled: boolean): Promise<boolean> {
     const identity = await this.readWritableIdentity();
@@ -342,8 +341,9 @@ export class ZifriendHidClient {
   private async writeSensor(change: Partial<ZifriendSensorWrite>, done: (next: ZifriendSettings) => boolean): Promise<ZifriendSettings> {
     const identity = await this.readWritableIdentity();
     const settings = await this.readSettings(identity);
-    // E-sports is left out (sent as 0) so a sensor write never flips it.
-    await this.write(zifriendEncodeSensor({ ...sensorOf(settings), ...change, eSports: undefined }));
+    // The vendor app resends its stored E-sports value with every sensor write, so do the same.
+    const eSports = this.eSportsWritten ?? this.loadESports();
+    await this.write(zifriendEncodeSensor({ ...sensorOf(settings), eSports, ...change }));
     const confirmed = await this.confirm(identity, done);
     if (!done(confirmed)) throw new Error("The mouse did not keep the sensor change.");
     return confirmed;
@@ -442,7 +442,7 @@ function hasControlCollection(collections: readonly HIDCollectionInfo[]): boolea
     || hasControlCollection(collection.children ?? []));
 }
 
-function sensorOf(settings: ZifriendSettings): ZifriendSensorWrite {
+function sensorOf(settings: ZifriendSettings): Omit<ZifriendSensorWrite, "eSports"> {
   return {
     lod: settings.lod === LIFT_OFF.High ? LIFT_OFF.High : LIFT_OFF.Low,
     rippleControl: settings.rippleControl,
