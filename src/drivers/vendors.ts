@@ -145,10 +145,17 @@ import {
   COOLERMASTER_VENDOR_ID,
 } from "@openmouse/protocol/coolermaster";
 import { AJAZZ_AK820_WIRED_PID } from "../ajazz/ak820.ts";
+import {
+  ZIFRIEND_PRODUCT_IDS,
+  ZIFRIEND_USAGE,
+  ZIFRIEND_USAGE_PAGE,
+  ZIFRIEND_VENDOR_ID,
+} from "@openmouse/protocol/zifriend";
 
 export const VENDOR_ID = {
   coolermaster: COOLERMASTER_VENDOR_ID,
   ajazz: 0x1a2c,
+  zifriend: ZIFRIEND_VENDOR_ID,
   vaxee: VAXEE_VENDOR_ID,
   asus: ASUS_VENDOR_ID,
   ryunix: RYUNIX_VENDOR_ID,
@@ -858,6 +865,15 @@ export const RAPOO_HID_FILTERS: HIDDeviceFilter[] = [...RAPOO_PRODUCT_IDS].map((
   usage: RAPOO_CONFIG_USAGE,
 }));
 
+// 0x248a is Telink's vendor id and is shared by many unrelated devices, so the
+// picker is narrowed to the M6's two product ids on its 0x8c control collection.
+export const ZIFRIEND_HID_FILTERS: HIDDeviceFilter[] = ZIFRIEND_PRODUCT_IDS.map((productId) => ({
+  vendorId: ZIFRIEND_VENDOR_ID,
+  productId,
+  usagePage: ZIFRIEND_USAGE_PAGE,
+  usage: ZIFRIEND_USAGE,
+}));
+
 export const MOTOSPEED_HID_FILTERS: HIDDeviceFilter[] = MOTOSPEED_PRODUCTS.map(({ productId }) => ({
   vendorId: MOTOSPEED_VENDOR_ID,
   productId,
@@ -994,6 +1010,7 @@ export const SUPPORTED_HID_FILTERS: HIDDeviceFilter[] = [
   ...HYPERX_HID_FILTERS,
   ...RYUNIX_HID_FILTERS,
   ...RAPOO_HID_FILTERS,
+  ...ZIFRIEND_HID_FILTERS,
   { vendorId: VENDOR_ID.coolermaster, usagePage: COOLERMASTER_USAGE_PAGE, usage: COOLERMASTER_USAGE },
   { vendorId: VENDOR_ID.ajazz, productId: AJAZZ_AK820_WIRED_PID, usagePage: 0xff00 },
   { vendorId: VENDOR_ID.ajazz, productId: AJAZZ_AK820_WIRED_PID, usagePage: 0xff60 },

@@ -79,6 +79,7 @@ checklist.
 | WLMouse | `@openmouse/protocol/wlmouse` |
 | Wooting | `@openmouse/protocol/wooting` |
 | Zaunkoenig | `@openmouse/protocol/zaunkoenig` |
+| ZIFRIEND M6 | `@openmouse/protocol/zifriend` |
 
 An exported protocol means OpenMouse implements that wire format. It does not
 claim every mouse from that brand works. When a catalog provides a `verified`
@@ -105,3 +106,9 @@ rivalcfg project, corroborated against libratbag and OpenRGB. The device is
 write-only — only the firmware version can be read back — and no entry is
 marked hardware-verified yet. See
 [docs/steelseries-testing.md](docs/steelseries-testing.md).
+
+The ZIFRIEND M6 codec and driver are decoded from the official ZIFRIEND M6
+driver (Beta 1.0.0.4) and match the Keychron "1k" decode at every shared
+offset. Wired and 2.4 GHz settings are supported; Bluetooth is read-only, as in
+the vendor software. Nothing is hardware-verified yet. See
+[docs/zifriend-m6.md](docs/zifriend-m6.md).

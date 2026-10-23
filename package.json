@@ -218,6 +218,10 @@
       "types": "./dist/ajazz/index.d.ts",
       "import": "./dist/ajazz/index.js"
     },
+    "./zifriend": {
+      "types": "./dist/zifriend/index.d.ts",
+      "import": "./dist/zifriend/index.js"
+    },
     "./coolermaster": {
       "types": "./dist/coolermaster/index.d.ts",
       "import": "./dist/coolermaster/index.js"
